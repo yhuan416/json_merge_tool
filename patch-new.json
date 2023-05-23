@@ -1,0 +1,6 @@
+[
+{"op":"replace","path":"/age","value":35},
+{"op":"remove","path":"/name"},
+{"op":"add","path":"/sex","value":"male"},
+{"op":"remove","path":"/age"}
+]
