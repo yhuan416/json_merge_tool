@@ -1,0 +1,19 @@
+{
+    "name":"aaa",
+    "age":34,
+    "sex":"male",
+    "group":1,
+    "class1": {
+        "name":"a1",
+        "mark": 90
+    },
+    "led": {
+        "id": 1, "pin": 2, "status": 1
+    },
+    "step": {
+        "pin1": { "id": 1, "pin": 2 },
+        "pin2": { "id": 2, "pin": 3 },
+        "pin3": { "id": 3, "pin": 4 },
+        "pin4": { "id": 4, "pin": 5 }
+    }
+}

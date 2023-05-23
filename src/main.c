@@ -1,78 +1,11 @@
-#include "stdio.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
 #include "cJSON_Utils.h"
 
-cJSON *load_from_file(char *file_name)
-{
-    cJSON *root = NULL;
-
-    FILE *fp = fopen(file_name, "r");
-    if (fp == NULL)
-    {
-        printf("open file %s failed\n", file_name);
-        return NULL;
-    }
-
-    fseek(fp, 0, SEEK_END);
-    int file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    char *buffer = (char *)cJSON_malloc(file_size + 1);
-    if (buffer == NULL)
-    {
-        printf("malloc failed\n");
-        fclose(fp);
-        return NULL;
-    }
-
-    fread(buffer, 1, file_size, fp);
-
-    root = cJSON_Parse(buffer);
-
-    cJSON_free(buffer);
-    fclose(fp);
-
-    return root;
-}
-
-int save_to_file(char *file_name, cJSON *obj)
-{
-    FILE *fp = fopen(file_name, "w");
-    if (fp == NULL)
-    {
-        printf("open file %s failed\n", file_name);
-        return -1;
-    }
-
-    char *buffer = cJSON_PrintUnformatted(obj);
-    if (buffer == NULL)
-    {
-        printf("cJSON_Print failed\n");
-        fclose(fp);
-        return -1;
-    }
-
-    fwrite(buffer, 1, strlen(buffer), fp);
-
-    cJSON_free(buffer);
-    fclose(fp);
-
-    return 0;
-}
-
-void json_printf(cJSON *obj)
-{
-    char buffer[1024] = {0};
-
-    cJSON_PrintPreallocated(obj, buffer, sizeof(buffer), 0);
-
-    printf("%s\n", buffer);
-
-    return;
-}
+#include "utils.h"
 
 int json_filter(cJSON *array)
 {
@@ -87,8 +20,6 @@ int json_filter(cJSON *array)
         cJSON *item = cJSON_GetArrayItem(array, i);
 
         if (cJSON_IsObject(item)) {
-            json_printf(item);
-
             // 如果op的值不是replace, 就从数组中移除该元素
             cJSON *op = cJSON_GetObjectItem(item, "op");
             if (op && cJSON_IsString(op) && strcmp(op->valuestring, "replace") != 0) {
@@ -96,8 +27,6 @@ int json_filter(cJSON *array)
                 i--;
                 size--;
             }
-
-            json_printf(array);
         }
     }
 
@@ -106,47 +35,94 @@ int json_filter(cJSON *array)
 
 int main(int argc, char const *argv[])
 {
-#if 1
-    cJSON *obj = load_from_file("notes.json");
-    cJSON *patch = load_from_file("patch-new-filtered.json");
+    int ret = 0;
+    cJSON *template = NULL;
+    cJSON *patch = NULL;
+    cJSON *patched = NULL;
+    cJSON *target = NULL;
 
-    cJSONUtils_ApplyPatches(obj, patch);
-
-    save_to_file("notes_patched.json", obj);
-
-    cJSON_Delete(obj);
-    cJSON_Delete(patch);
-#endif
-
-#if 0
-    cJSON *obj = load_from_file("notes.json");
-    cJSON *patched = load_from_file("notes_patched.json");
-
-    cJSON *patch = cJSONUtils_GeneratePatchesCaseSensitive(obj, patched);
-
-    save_to_file("patch-new.json", patch);
-
-    cJSON_Delete(patch);
-    cJSON_Delete(obj);
-    cJSON_Delete(patched);
-#endif
-
-#if 0
-    cJSON *patch = load_from_file("patch-new.json");
-
-    if (cJSON_IsArray(patch)) {
-        printf("patch is array\n");
-
-        json_filter(patch);
-
-    } else {
-        printf("patch is not array\n");
+    // 参数检测
+    if (argc != 4) {
+        printf("Usage: %s <template> <patch_file> <target_file>\n", argv[0]);
+        return -1;
     }
 
-    save_to_file("patch-new-filtered.json", patch);
+    // 读取模板文件
+    template = load_from_file(argv[1]);
+    if (template == NULL) {
+        printf("load_from_file %s failed\n", argv[1]);
+        ret = -1;
+        goto out;
+    }
 
-    cJSON_Delete(patch);
-#endif
+    // 读取patch文件
+    patch = load_from_file(argv[2]);
+    if (patch == NULL) {
+        printf("load_from_file %s failed\n", argv[2]);
+        ret = -1;
+        goto out;
+    }
 
-    return 0;
+    // 生成 json patch
+    patched = cJSONUtils_GeneratePatchesCaseSensitive(template, patch);
+    if (patched == NULL) {
+        printf("cJSONUtils_GeneratePatchesCaseSensitive failed\n");
+        ret = -1;
+        goto out;
+    }
+
+    // 过滤 json patch
+    ret = json_filter(patched);
+    if (ret != 0) {
+        printf("json_filter failed\n");
+        goto out;
+    }
+
+    // 深拷贝 template 作为 target
+    target = cJSON_Duplicate(template, 1);
+    if (target == NULL) {
+        printf("cJSON_Duplicate failed\n");
+        ret = -1;
+        goto out;
+    }
+
+    // 应用 json patch 到 target
+    ret = cJSONUtils_ApplyPatches(target, patched);
+    if (ret != 0) {
+        printf("cJSONUtils_ApplyPatches failed\n");
+        goto out;
+    }
+
+    // sort target
+    cJSONUtils_SortObject(target);
+
+    // 保存 target 到文件
+    ret = save_to_file(argv[3], target, 0);
+    if (ret != 0) {
+        printf("save_to_file %s failed\n", argv[3]);
+        goto out;
+    }
+
+out:
+    if (target) {
+        cJSON_Delete(target);
+        target = NULL;
+    }
+
+    if (patched) {
+        cJSON_Delete(patched);
+        patched = NULL;
+    }
+
+    if (patch) {
+        cJSON_Delete(patch);
+        patch = NULL;
+    }
+
+    if (template) {
+        cJSON_Delete(template);
+        template = NULL;
+    }
+
+    return ret;
 }
