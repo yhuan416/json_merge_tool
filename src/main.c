@@ -22,7 +22,7 @@ int json_filter(cJSON *array)
         if (cJSON_IsObject(item)) {
             // 如果op的值不是replace, 就从数组中移除该元素
             cJSON *op = cJSON_GetObjectItem(item, "op");
-            if (op && cJSON_IsString(op) && strcmp(op->valuestring, "replace") != 0) {
+            if (op && cJSON_IsString(op) && strcmp(cJSON_GetStringValue(op), "replace") != 0) {
                 cJSON_DeleteItemFromArray(array, i);
                 i--;
                 size--;
